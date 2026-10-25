@@ -1,60 +1,51 @@
-name: Build Android APK
+name: Unzip and Build Lumina
 
+# Put this file in your repo at:  .github/workflows/build-from-zip.yml
+# and upload Lumina.zip to the root of the same repo.
 on:
   push:
+    branches: [main, master]
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      VERSION_CODE: ${{ github.run_number }}
-      VERSION_NAME: 1.0.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Unzip project
-        run: unzip -q ./*.zip
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
+        run: |
+          unzip -q Lumina.zip
+          ls Lumina
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Install dependencies
-        working-directory: glassnote
-        run: npm install --no-audit --no-fund
-
-      - name: Add Android platform
-        working-directory: glassnote
-        run: npx cap add android
-
-      - name: Patch Android project
-        working-directory: glassnote
-        run: node scripts/patch-android.mjs
-
-      - name: Sync web assets
-        working-directory: glassnote
-        run: npx cap sync android
-
-      - name: Build APK
-        working-directory: glassnote/android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Collect APK
-        run: |
-          mkdir -p out
-          f=$(find glassnote/android/app/build/outputs/apk -name "*.apk" | head -n1)
-          cp "$f" "out/GlassNote-${VERSION_NAME}.apk"
-
-      - uses: actions/upload-artifact@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          name: GlassNote-APK
-          path: out/*.apk
+          gradle-version: 8.7
+
+      - name: Build release APK
+        working-directory: Lumina
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK
+        run: cp Lumina/app/build/outputs/apk/release/*.apk Lumina.apk
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lumina-APK
+          path: Lumina.apk
+
+      - name: Publish release (direct download link)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Lumina build ${{ github.run_number }}
+          files: Lumina.apk
